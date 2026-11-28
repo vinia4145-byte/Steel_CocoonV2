@@ -11,10 +11,14 @@ public class TankMovement : MonoBehaviour
     public FogGrid fogGrid; // Сюда перетащи FogManager
     public float visionRadius = 200f; // Радиус обзора танка
 
+    [Header("Звук мотора")]
+    public AudioSource engineSource;   // компонент AudioSource
+    public AudioClip engineSound;      // сам звук рева мотора
+
     [Header("Педаль газа")]
     public RectTransform pedal_r;      // перетащи сюда pedal_r из иерархии
     public Vector2 pressedScale = new Vector2(0.8f, 0.8f);  // ~20% меньше
-    public Vector2 pressedOffset = new Vector2(20f, 20f);   // сдвиг вниз, подгонишь
+    public Vector2 pressedOffset = new Vector2(-20f, -200f);   // сдвиг вниз, подгонишь
 
     private RectTransform tankRect;
     private GearShifter gearShifter;
@@ -25,6 +29,7 @@ public class TankMovement : MonoBehaviour
 
     void Start()
     {
+        Debug.Log("TankMovement запущен. Педаль: " + (pedal_r != null ? pedal_r.name : "NULL"));
         tankRect = GetComponent<RectTransform>();
         gearShifter = FindObjectOfType<GearShifter>();
         steeringWheel = FindObjectOfType<SteeringWheelController>();
@@ -69,9 +74,28 @@ public class TankMovement : MonoBehaviour
             }
         }
 
+        // 2.5 ЗВУК МОТОРА: ревёт, пока зажат газ
+        if (gas)
+        {
+            if (engineSource != null && engineSound != null && !engineSource.isPlaying)
+            {
+                engineSource.clip = engineSound;
+                engineSource.loop = true;
+                engineSource.Play();
+            }
+        }
+        else
+        {
+            if (engineSource != null && engineSource.isPlaying)
+            {
+                engineSource.Stop();
+            }
+        }
+
         // 3. ГАЗ (Правая кнопка мыши)
         if (gas)
         {
+            Debug.Log("Позиция педали: " + pedal_r.anchoredPosition);
             // Вперед
             if (gearShifter.currentGear == 1)
             {
@@ -111,4 +135,5 @@ public class TankMovement : MonoBehaviour
             }
         }
     }
+
 }

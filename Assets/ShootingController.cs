@@ -1,22 +1,41 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 using System.Collections;
+using TMPro;
 
 public class ShootingController : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
 {
     [Header("Ссылки на механизмы")]
     public BreechDoorController breech;
 
+    [Header("Предупреждение о дальности")]
+    public TextMeshProUGUI rangeWarningText; // красная надпись на экране
+    public float maxRange = 2000f;           // максимальная дальность выстрела
+
+    private BallisticCalculator calc;
+
     [Header("Визуал и Звук")]
     public GameObject shellCasing;
+    public RectTransform ejectPoint;
     public AudioSource audioSource;
     public AudioClip shotSound;
+
+    [Header("Звуки результата")]
+    public AudioClip hitSound;   // «Точное попадание»
+    public AudioClip missSound;  // «Промах, корректируй наведение»
 
     [Header("Карта и Воронка")]
     public GameObject target;
     public GameObject craterPrefab;
     public ValveController leftValve;
     public ValveController rightValve;
+
+    [Header("Выброс гильзы")]
+    public float ejectDropHeight = 400f;   // насколько вниз падает гильза
+    public float ejectSideOffset = 80f;    // сдвиг вбок при вылете
+
+    [Header("Ссылка на линейку")]
+    public RulerController ruler;
 
     [Header("Настройки выстрела")]
     public float maxPullDistance = 100f;
@@ -37,6 +56,10 @@ public class ShootingController : MonoBehaviour, IPointerDownHandler, IPointerUp
 
         if (shellCasing != null) shellCasing.SetActive(false);
         if (craterPrefab != null) craterPrefab.SetActive(false);
+
+        calc = FindObjectOfType<BallisticCalculator>();
+        if (rangeWarningText != null) rangeWarningText.gameObject.SetActive(false);
+        ruler = FindObjectOfType<RulerController>(); // самообслуживание: найдём линейку сами
     }
 
     public void OnPointerDown(PointerEventData eventData)
@@ -75,6 +98,17 @@ public class ShootingController : MonoBehaviour, IPointerDownHandler, IPointerUp
                 ropeRect.anchoredPosition = startPos - new Vector2(0, currentPull);
             }
         }
+        // ПРЕДУПРЕЖДЕНИЕ: цель дальше максимальной дальности
+        if (rangeWarningText != null)
+        {
+            bool tooFar = calc != null && calc.hasTarget && calc.targetDistance > maxRange;
+            rangeWarningText.gameObject.SetActive(tooFar);
+        }
+        // выход по esc
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            Application.Quit();
+        }
     }
 
     void Fire()
@@ -85,37 +119,54 @@ public class ShootingController : MonoBehaviour, IPointerDownHandler, IPointerUp
             return;
         }
 
+        // Проверка дальности: снаряд летит максимум на maxRange
+        if (calc != null && calc.targetDistance > maxRange)
+        {
+            Debug.Log("Допустимая дальность превышена!");
+            return; // выстрел не происходит
+        }
+
         Debug.Log("ВЫСТРЕЛ!");
 
         if (audioSource != null && shotSound != null)
             audioSource.PlayOneShot(shotSound);
 
         StartCoroutine(FireSequence());
+        if (ruler != null) ruler.ResetRuler();
     }
+
 
     IEnumerator FireSequence()
     {
         // 1. Пауза перед выбросом гильзы (звук выстрела)
         yield return new WaitForSeconds(ejectionDelay);
 
-        // 2. Открываем задвижку и выбрасываем гильзу
+        // 2. Открываем задвижку и ЖДЁМ, пока она откроется до конца
         breech.OpenForEjection();
+
+        while (!breech.IsFullyOpen())
+        {
+            yield return null; // ждём следующий кадр, пока затвор доезжает
+        }
+
+        // 3. Затвор открыт — показываем гильзу и запускаем анимацию выброса
         if (shellCasing != null)
         {
             shellCasing.SetActive(true);
             StartCoroutine(EjectCasingAnimation());
         }
 
-        // 3. Ждем, пока снаряд летит до цели
+        // 4. Ждем, пока снаряд летит до цели
         yield return new WaitForSeconds(shellFlightTime);
 
-        // 4. Проверяем попадание и ставим воронку
+        // 5. Проверяем попадание и ставим воронку
         CheckHit();
 
-        // 5. Закрываем задвижку (можно сделать это чуть позже или раньше, по желанию)
+        // 6. Закрываем задвижку
         yield return new WaitForSeconds(0.5f);
         breech.CloseAfterEjection();
     }
+
 
     void CheckHit()
     {
@@ -134,6 +185,9 @@ public class ShootingController : MonoBehaviour, IPointerDownHandler, IPointerUp
                 craterRect.position = targetRect.position;
                 Debug.Log("ПОПАДАНИЕ! Мишень уничтожена.");
                 target.SetActive(false);
+
+                if (hitSound != null && audioSource != null)
+                    audioSource.PlayOneShot(hitSound);
             }
             else
             {
@@ -141,6 +195,9 @@ public class ShootingController : MonoBehaviour, IPointerDownHandler, IPointerUp
                 float randomY = Random.Range(-100f, 100f);
                 craterRect.position = targetRect.position + new Vector3(randomX, randomY, 0);
                 Debug.Log("ПРОМАХ! Воронка появилась в стороне.");
+
+                if (missSound != null && audioSource != null)
+                    audioSource.PlayOneShot(missSound);
             }
         }
     }
@@ -148,10 +205,25 @@ public class ShootingController : MonoBehaviour, IPointerDownHandler, IPointerUp
     IEnumerator EjectCasingAnimation()
     {
         RectTransform casingRect = shellCasing.GetComponent<RectTransform>();
-        casingRect.anchoredPosition = new Vector2(255f, 132f);
 
-        Vector2 startPos = casingRect.anchoredPosition;
-        Vector2 endPos = new Vector2(startPos.x + 80f, -250f);
+        // Стартовая точка — позиция казенника, переведённая в координаты родителя гильзы
+        RectTransform parent = casingRect.parent as RectTransform;
+        Vector2 startPos;
+
+        if (ejectPoint != null && parent != null)
+        {
+            // мировая позиция казенника -> локальная позиция внутри родителя гильзы
+            startPos = parent.InverseTransformPoint(ejectPoint.position);
+        }
+        else
+        {
+            // запасной вариант, если точку не назначили
+            startPos = new Vector2(255f, 132f);
+        }
+
+        casingRect.anchoredPosition = startPos;
+
+        Vector2 endPos = new Vector2(startPos.x + ejectSideOffset, startPos.y - ejectDropHeight);
 
         float elapsed = 0f;
         float duration = 0.3f;

@@ -7,20 +7,24 @@ public class ReconPlane : MonoBehaviour
     public float startX = -600f;
     public float endX = 600f;
     public float spawnY = 0f;
-    public float revealRadius = 150f;
-    
+    public float revealRadius = 300f;
 
     [Header("Ссылки")]
     public GameObject target; // ВОТ ОНА, НАША МИШЕНЬ
 
     private RectTransform planeRect;
     private FogGrid fogGrid;
+    private BallisticCalculator calc;
 
     void Start()
     {
         planeRect = GetComponent<RectTransform>();
         fogGrid = FindObjectOfType<FogGrid>();
+
         target.SetActive(false); // Прячем мишень в начале
+
+        calc = FindObjectOfType<BallisticCalculator>();
+        if (calc != null) calc.hasTarget = false; // цели нет — совпадать нечему
     }
 
     public void LaunchPlane(float customY)
@@ -40,17 +44,16 @@ public class ReconPlane : MonoBehaviour
             fogGrid.RevealFog(planeRect.position, revealRadius);
         }
 
-        // Показываем мишень на середине пути
-        if (planeRect.anchoredPosition.x > 0 && target != null)
+        // Показываем мишень на середине пути (один раз)
+        if (planeRect.anchoredPosition.x > 0 && target != null && !target.activeSelf)
         {
             target.SetActive(true);
-           
+            if (calc != null) calc.hasTarget = true;
         }
 
         if (planeRect.anchoredPosition.x > endX)
         {
             gameObject.SetActive(false);
-
         }
     }
 }

@@ -4,10 +4,11 @@ using UnityEngine.EventSystems;
 public class ScaleObject : MonoBehaviour, IPointerClickHandler
 {
     [Header("Настройки масштаба")]
-    public float zoomMultiplier = 1.4f;
+    public float zoomMultiplier = 2f; // было 1.4 — теперь зум заметно сильнее
 
     [Header("Настройки сдвига при увеличении")]
-    public Vector2 zoomOffset = new Vector2(50f, -50f);
+    // Сдвиг задаётся для БАЗОВОГО масштаба, а при зуме умножается на кратность
+    public Vector2 zoomOffset = new Vector2(60f, -60f);
 
     private Vector3 originalScale;
     private Vector2 originalPosition;
@@ -30,7 +31,8 @@ public class ScaleObject : MonoBehaviour, IPointerClickHandler
         if (!isZoomed)
         {
             transform.localScale = originalScale * zoomMultiplier;
-            rectTransform.anchoredPosition = originalPosition + zoomOffset;
+            // Сдвиг пропорционален зуму: чем сильнее приблизили, тем дальше уехали
+            rectTransform.anchoredPosition = originalPosition + zoomOffset * zoomMultiplier;
             isZoomed = true;
         }
         else

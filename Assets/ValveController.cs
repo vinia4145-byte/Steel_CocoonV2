@@ -20,6 +20,13 @@ public class ValveController : MonoBehaviour, IDragHandler, IBeginDragHandler
     private float lastMouseAngle = 0f;
     private bool isDragging = false;
 
+    private BallisticCalculator calc;
+
+    void Start()
+    {
+        calc = FindObjectOfType<BallisticCalculator>();
+    }
+
     void Update()
     {
         if (debugResultText != null)
@@ -70,8 +77,10 @@ public class ValveController : MonoBehaviour, IDragHandler, IBeginDragHandler
 
     public bool IsCorrect()
     {
-        BallisticCalculator calc = FindObjectOfType<BallisticCalculator>();
         if (calc == null) return false;
+
+        // Пока мишени нет — совпадение невозможно в принципе
+        if (!calc.hasTarget) return false;
 
         // Берем абсолютное значение азимута, чтобы на табло не было минусов
         if (isAzimuthValve)

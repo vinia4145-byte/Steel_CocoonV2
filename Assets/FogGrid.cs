@@ -10,6 +10,8 @@ public class FogGrid : MonoBehaviour
     public float tileSize = 100f;
     public float offset = 25f; // Отступ от края карты
 
+    public float revealRadius = 150f; // радиус обзора В ЕДИНИЦАХ КАРТЫ
+
     private GameObject[,] fogTiles;
 
     void Start()
@@ -36,13 +38,17 @@ public class FogGrid : MonoBehaviour
     // Метод для рассеивания тумана
     public void RevealFog(Vector2 tankPosition, float radius)
     {
+        // Переводим обе точки в координаты карты — зум больше не влияет
+        Vector2 tankLocal = mapParent.InverseTransformPoint(tankPosition);
+
         for (int x = 0; x < gridWidth; x++)
         {
             for (int y = 0; y < gridHeight; y++)
             {
                 if (fogTiles[x, y] != null && fogTiles[x, y].activeSelf)
                 {
-                    float distance = Vector2.Distance(fogTiles[x, y].transform.position, tankPosition);
+                    Vector2 tileLocal = mapParent.InverseTransformPoint(fogTiles[x, y].transform.position);
+                    float distance = Vector2.Distance(tileLocal, tankLocal);
 
                     if (distance < radius)
                     {

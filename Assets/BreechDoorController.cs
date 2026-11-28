@@ -102,4 +102,9 @@ public class BreechDoorController : MonoBehaviour, IPointerClickHandler
         targetRotation = closedRotation;
         isOpen = false;
     }
+    public bool IsFullyOpen()
+    {
+        if (!isOpen) return false;
+        return Quaternion.Angle(transform.localRotation, targetRotation) < 2f;
+    }
 }
